@@ -125,7 +125,6 @@ extern LWLIB_ID widget_id_tick;
 
 #define MAXREQUEST(dpy) (XMaxRequestSize (dpy))
 
-static Lisp_Object Qsuppress_icon;
 static Lisp_Object Qundefined_color;
 static Lisp_Object Qcompound_text, Qcancel_timer;
 Lisp_Object Qfont_param;
@@ -458,15 +457,23 @@ x_set_tool_bar_position (struct frame *f,
                          Lisp_Object new_value,
                          Lisp_Object old_value)
 {
-  if (! EQ (new_value, Qleft) && ! EQ (new_value, Qright)
-      && ! EQ (new_value, Qbottom) && ! EQ (new_value, Qtop))
-    return;
-  if (EQ (new_value, old_value)) return;
+  Lisp_Object choice = list4 (Qleft, Qright, Qtop, Qbottom);
 
+  if (!NILP (Fmemq (new_value, choice)))
+    {
 #ifdef USE_GTK
-  xg_change_toolbar_position (f, new_value);
-  fset_tool_bar_position (f, new_value);
+      if (!EQ (new_value, old_value))
+	{
+	  xg_change_toolbar_position (f, new_value);
+	  fset_tool_bar_position (f, new_value);
+	}
+#else
+      if (!EQ (new_value, Qtop))
+	error ("The only supported tool bar position is top");
 #endif
+    }
+  else
+    wrong_choice (choice, new_value);
 }
 
 #ifdef USE_GTK
@@ -1596,7 +1603,7 @@ hack_wm_protocols (struct frame *f, Widget widget)
 
     if ((XGetWindowProperty (dpy, w,
 			     FRAME_DISPLAY_INFO (f)->Xatom_wm_protocols,
-			     (long)0, (long)100, False, XA_ATOM,
+			     0, 100, False, XA_ATOM,
 			     &type, &format, &nitems, &bytes_after,
 			     &catoms)
 	 == Success)
@@ -2854,18 +2861,21 @@ Signal error if FRAME is not an X frame.  */)
 static void
 set_machine_and_pid_properties (struct frame *f)
 {
-  long pid = (long) getpid ();
-
   /* This will set WM_CLIENT_MACHINE and WM_LOCALE_NAME.  */
   XSetWMProperties (FRAME_X_DISPLAY (f), FRAME_OUTER_WINDOW (f), NULL, NULL,
                     NULL, 0, NULL, NULL, NULL);
-  XChangeProperty (FRAME_X_DISPLAY (f),
-                   FRAME_OUTER_WINDOW (f),
-                   XInternAtom (FRAME_X_DISPLAY (f),
-                                "_NET_WM_PID",
-                                False),
-                   XA_CARDINAL, 32, PropModeReplace,
-                   (unsigned char *) &pid, 1);
+  pid_t pid = getpid ();
+  if (pid <= 0xffffffffu)
+    {
+      unsigned long xpid = pid;
+      XChangeProperty (FRAME_X_DISPLAY (f),
+		       FRAME_OUTER_WINDOW (f),
+		       XInternAtom (FRAME_X_DISPLAY (f),
+				    "_NET_WM_PID",
+				    False),
+		       XA_CARDINAL, 32, PropModeReplace,
+		       (unsigned char *) &xpid, 1);
+    }
 }
 
 DEFUN ("x-create-frame", Fx_create_frame, Sx_create_frame,
@@ -3180,7 +3190,7 @@ This function is an internal primitive--use `make-frame' instead.  */)
   x_default_parameter (f, parms, Qfullscreen, Qnil,
                        "fullscreen", "Fullscreen", RES_TYPE_SYMBOL);
   x_default_parameter (f, parms, Qtool_bar_position,
-                       f->tool_bar_position, 0, 0, RES_TYPE_SYMBOL);
+                       FRAME_TOOL_BAR_POSITION (f), 0, 0, RES_TYPE_SYMBOL);
 
   /* Compute the size of the X window.  */
   window_prompting = x_figure_window_size (f, parms, 1);
@@ -5703,7 +5713,11 @@ or directory must exist.
 
 This function is only defined on NS, MS Windows, and X Windows with the
 Motif or Gtk toolkits.  With the Motif toolkit, ONLY-DIR-P is ignored.
-Otherwise, if ONLY-DIR-P is non-nil, the user can only select directories.  */)
+Otherwise, if ONLY-DIR-P is non-nil, the user can only select directories.
+On Windows 7 and later, the file selection dialog "remembers" the last
+directory where the user selected a file, and will open that directory
+instead of DIR on subsequent invocations of this function with the same
+value of DIR as in previous invocations; this is standard Windows behavior.  */)
   (Lisp_Object prompt, Lisp_Object dir, Lisp_Object default_filename,
    Lisp_Object mustmatch, Lisp_Object only_dir_p)
 {
@@ -5875,7 +5889,11 @@ or directory must exist.
 
 This function is only defined on NS, MS Windows, and X Windows with the
 Motif or Gtk toolkits.  With the Motif toolkit, ONLY-DIR-P is ignored.
-Otherwise, if ONLY-DIR-P is non-nil, the user can only select directories.  */)
+Otherwise, if ONLY-DIR-P is non-nil, the user can only select directories.
+On Windows 7 and later, the file selection dialog "remembers" the last
+directory where the user selected a file, and will open that directory
+instead of DIR on subsequent invocations of this function with the same
+value of DIR as in previous invocations; this is standard Windows behavior.  */)
   (Lisp_Object prompt, Lisp_Object dir, Lisp_Object default_filename, Lisp_Object mustmatch, Lisp_Object only_dir_p)
 {
   struct frame *f = SELECTED_FRAME ();
@@ -6137,15 +6155,10 @@ frame_parm_handler x_frame_parm_handlers[] =
 void
 syms_of_xfns (void)
 {
-  /* The section below is built by the lisp expression at the top of the file,
-     just above where these variables are declared.  */
-  /*&&& init symbols here &&&*/
-  DEFSYM (Qsuppress_icon, "suppress-icon");
   DEFSYM (Qundefined_color, "undefined-color");
   DEFSYM (Qcompound_text, "compound-text");
   DEFSYM (Qcancel_timer, "cancel-timer");
   DEFSYM (Qfont_param, "font-parameter");
-  /* This is the end of symbol initialization.  */
 
   Fput (Qundefined_color, Qerror_conditions,
 	listn (CONSTYPE_PURE, 2, Qundefined_color, Qerror));

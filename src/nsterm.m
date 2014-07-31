@@ -229,7 +229,7 @@ static unsigned convert_ns_to_X_keysym[] =
 
 static Lisp_Object Qmodifier_value;
 Lisp_Object Qalt, Qcontrol, Qhyper, Qmeta, Qsuper;
-extern Lisp_Object Qcursor_color, Qcursor_type, Qns, Qleft;
+extern Lisp_Object Qcursor_color, Qcursor_type, Qns;
 
 static Lisp_Object QUTF8_STRING;
 static Lisp_Object Qcocoa, Qgnustep;
@@ -282,6 +282,11 @@ static NSMutableArray *ns_pending_files, *ns_pending_service_names,
   *ns_pending_service_args;
 static BOOL ns_do_open_file = NO;
 static BOOL ns_last_use_native_fullscreen;
+
+/* Non-zero means that a HELP_EVENT has been generated since Emacs
+   start.  */
+
+static BOOL any_help_event_p = NO;
 
 static struct {
   struct input_event *q;
@@ -5007,9 +5012,11 @@ not_in_argv (NSString *arg)
 
   if (EQ (font->driver->type, Qns))
     nsfont = ((struct nsfont_info *)font)->nsfont;
+#ifdef NS_IMPL_COCOA
 #if MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_5
   else
     nsfont = (NSFont *) macfont_get_nsctfont (font);
+#endif
 #endif
 
   if ((newFont = [sender convertFont: nsfont]))
@@ -5688,13 +5695,9 @@ not_in_argv (NSString *arg)
       /* NOTE: help_echo_{window,pos,object} are set in xdisp.c
          (note_mouse_highlight), which is called through the
          note_mouse_movement () call above */
+      any_help_event_p = YES;
       gen_help_event (help_echo_string, frame, help_echo_window,
                       help_echo_object, help_echo_pos);
-    }
-  else
-    {
-      help_echo_string = Qnil;
-      gen_help_event (Qnil, frame, Qnil, Qnil, 0);
     }
 
   if (emacsframe->mouse_moved && send_appdefined)
@@ -5971,6 +5974,14 @@ if (cols > 0 && rows > 0)
     {
       x_update_cursor (emacsframe, 1);
       x_set_frame_alpha (emacsframe);
+    }
+
+  if (any_help_event_p)
+    {
+      Lisp_Object frame;
+      XSETFRAME (frame, emacsframe);
+      help_echo_string = Qnil;
+      gen_help_event (Qnil, frame, Qnil, Qnil, 0);
     }
 
   if (emacs_event && is_focus_frame)
@@ -7135,15 +7146,6 @@ if (cols > 0 && rows > 0)
 }
 
 
-- (void)dealloc
-{
-  NSTRACE (EmacsScroller_dealloc);
-  if (!NILP (win))
-    wset_vertical_scroll_bar (XWINDOW (win), Qnil);
-  [super dealloc];
-}
-
-
 - condemn
 {
   NSTRACE (condemn);
@@ -7171,6 +7173,9 @@ if (cols > 0 && rows > 0)
       view = (EmacsView *)FRAME_NS_VIEW (frame);
       if (view != nil)
         view->scrollbarsNeedingUpdate++;
+      if (!NILP (win))
+        wset_vertical_scroll_bar (XWINDOW (win), Qnil);
+      win = Qnil;
       [self removeFromSuperview];
       [self release];
       unblock_input ();
