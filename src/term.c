@@ -105,9 +105,9 @@ static _Noreturn void vfatal (const char *str, va_list ap)
 
 #define OUTPUT1_IF(tty, a) do { if (a) emacs_tputs ((tty), a, 1, cmputc); } while (0)
 
-/* Display space properties */
+/* Display space properties.  */
 
-/* Chain of all tty device parameters. */
+/* Chain of all tty device parameters.  */
 struct tty_display_info *tty_list;
 
 /* Meaning of bits in no_color_video.  Each bit set means that the
@@ -2411,7 +2411,7 @@ frame's terminal). */)
 	     was suspended.  */
 	  get_tty_size (fileno (t->display_info.tty->input), &width, &height);
 	  if (width != old_width || height != old_height)
-	    change_frame_size (f, width, height, 0, 0, 0, 0);
+	    change_frame_size (f, width, height - FRAME_MENU_BAR_LINES (f), 0, 0, 0, 0);
 	  SET_FRAME_VISIBLE (XFRAME (t->display_info.tty->top_frame), 1);
 	}
 
@@ -3904,6 +3904,7 @@ clear_tty_hooks (struct terminal *terminal)
   terminal->fullscreen_hook = 0;
   terminal->menu_show_hook = 0;
   terminal->set_vertical_scroll_bar_hook = 0;
+  terminal->set_horizontal_scroll_bar_hook = 0;
   terminal->condemn_scroll_bars_hook = 0;
   terminal->redeem_scroll_bar_hook = 0;
   terminal->judge_scroll_bars_hook = 0;
@@ -4042,10 +4043,10 @@ init_tty (const char *name, const char *terminal_type, bool must_succeed)
        open a frame on the same terminal.  */
     int flags = O_RDWR | O_NOCTTY | (ctty ? 0 : O_IGNORE_CTTY);
     int fd = emacs_open (name, flags, 0);
-    tty->input = tty->output =
-      ((fd < 0 || ! isatty (fd))
-       ? NULL
-       : fdopen (fd, "w+"));
+    tty->input = tty->output
+      = ((fd < 0 || ! isatty (fd))
+	 ? NULL
+	 : fdopen (fd, "w+"));
 
     if (! tty->input)
       {
@@ -4225,6 +4226,7 @@ use the Bourne shell command `TERM=... export TERM' (C-shell:\n\
     tty->specified_window = height;
 
     FRAME_VERTICAL_SCROLL_BAR_TYPE (f) = vertical_scroll_bar_none;
+    FRAME_HAS_HORIZONTAL_SCROLL_BARS (f) = 0;
     tty->char_ins_del_ok = 1;
     baud_rate = 19200;
   }
@@ -4460,7 +4462,7 @@ fatal (const char *str, ...)
 
 
 
-/* Delete the given tty terminal, closing all frames on it. */
+/* Delete the given tty terminal, closing all frames on it.  */
 
 static void
 delete_tty (struct terminal *terminal)
@@ -4485,7 +4487,7 @@ delete_tty (struct terminal *terminal)
         ;
 
       if (! p)
-        /* This should not happen. */
+        /* This should not happen.  */
         emacs_abort ();
 
       p->next = tty->next;
@@ -4493,7 +4495,7 @@ delete_tty (struct terminal *terminal)
     }
 
   /* reset_sys_modes needs a valid device, so this call needs to be
-     before delete_terminal. */
+     before delete_terminal.  */
   reset_sys_modes (tty);
 
   delete_terminal (terminal);
