@@ -1,0 +1,23 @@
+# git branch
+git checkout emacs-24.3
+git checkout -b orimanabu/emacs-24.3/mac-4.8
+
+# prepare for auto-generated fiiles
+tar xvf ~/Downloads/emacs-24.3.tar.xz
+(cd emacs-24.3/ && tar cf - .) | tar xpvf -
+rm -rf emacs-24.3/
+
+# patch
+patch -p0 < ~/Downloads/emacs-24.3-mac-4.8/patch-mac 2>&1 | tee log.patch
+
+# git
+git add doc/emacs/macport.texi
+git status | grep modified: | awk '{print $3}' | xargs git add
+git commit -m 'apply patch-mac from emacs-24.3-mac-4.8.'
+
+
+cp -rp ~/Downloads/emacs-24.3-mac-4.8/mac .
+cp -p ./nextstep/Cocoa/Emacs.base/Contents/Resources/Emacs.icns ./mac/Emacs.app/Contents/Resources/Emacs.icns
+cp -rp ~/Downloads/emacs-24.3-mac-4.8/etc/images/* ./etc/images/
+cp -p ~/Downloads/emacs-24.3-mac-4.8/src/* ./src/
+cp -p ~/Downloads/emacs-24.3-mac-4.8/lisp/term/mac-win.el ./lisp/term/
