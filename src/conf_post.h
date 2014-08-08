@@ -60,6 +60,11 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #define free unexec_free
 /* Don't use posix_memalign because it is not compatible with unexmacosx.c.  */
 #undef HAVE_POSIX_MEMALIGN
+/* Name of the segment whose VM protection is the default (read/write)
+   for temacs but read-only for the dumped executable.  */
+#define EMACS_READ_ONLY_SEGMENT "EMACS_READ_ONLY"
+/* Name of the section to place the pure space.  */
+//#define PURE_SECTION EMACS_READ_ONLY_SEGMENT ",pure"
 #endif
 /* The following solves the problem that Emacs hangs when evaluating
    (make-comint "test0" "/nodir/nofile" nil "") when /nodir/nofile

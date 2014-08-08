@@ -314,11 +314,14 @@ static Lisp_Object Qmouse_fixup_help_message;
 /* Symbols to denote kinds of events.  */
 static Lisp_Object Qfunction_key;
 Lisp_Object Qmouse_click;
-#ifdef HAVE_NTGUI
+#if defined (HAVE_NTGUI) || defined (HAVE_MACGUI)
 Lisp_Object Qlanguage_change;
 #endif
 static Lisp_Object Qdrag_n_drop;
 static Lisp_Object Qsave_session;
+#ifdef HAVE_MACGUI
+Lisp_Object Qmac_apple_event;
+#endif
 #ifdef HAVE_DBUS
 static Lisp_Object Qdbus_event;
 #endif
@@ -1143,7 +1146,20 @@ command_loop (void)
   else
     while (1)
       {
+#if MAC_USE_AUTORELEASE_LOOP
+	mac_autorelease_loop (^{
+	    internal_catch (Qtop_level, top_level_1, Qnil);
+	    return Qnil;
+	  });
+#else
+#ifdef HAVE_MACGUI
+	void *pool = mac_alloc_autorelease_pool ();
+#endif
 	internal_catch (Qtop_level, top_level_1, Qnil);
+#ifdef HAVE_MACGUI
+	mac_release_autorelease_pool (pool);
+#endif
+#endif
 	internal_catch (Qtop_level, command_loop_2, Qnil);
 	executing_kbd_macro = Qnil;
 
@@ -1162,11 +1178,25 @@ command_loop (void)
 Lisp_Object
 command_loop_2 (Lisp_Object ignore)
 {
+#if MAC_USE_AUTORELEASE_LOOP
+  mac_autorelease_loop (^{
+      return internal_condition_case (command_loop_1, Qerror, cmd_error);
+    });
+#else
   register Lisp_Object val;
 
   do
-    val = internal_condition_case (command_loop_1, Qerror, cmd_error);
+    {
+#ifdef HAVE_MACGUI
+      void *pool = mac_alloc_autorelease_pool ();
+#endif
+      val = internal_condition_case (command_loop_1, Qerror, cmd_error);
+#ifdef HAVE_MACGUI
+      mac_release_autorelease_pool (pool);
+#endif
+    }
   while (!NILP (val));
+#endif
 
   return Qnil;
 }
@@ -1342,12 +1372,15 @@ Lisp_Object last_undo_boundary;
 Lisp_Object
 command_loop_1 (void)
 {
-  Lisp_Object cmd;
-  Lisp_Object keybuf[30];
-  int i;
-  EMACS_INT prev_modiff = 0;
-  struct buffer *prev_buffer = NULL;
-  bool already_adjusted = 0;
+#if MAC_USE_AUTORELEASE_LOOP
+#define BLOCK __block
+#else
+#define BLOCK
+#endif
+  EMACS_INT BLOCK prev_modiff = 0;
+  struct buffer * BLOCK prev_buffer = NULL;
+  bool BLOCK already_adjusted = 0;
+#undef BLOCK
 
   kset_prefix_arg (current_kboard, Qnil);
   kset_last_prefix_arg (current_kboard, Qnil);
@@ -1387,8 +1420,19 @@ command_loop_1 (void)
   if (!CONSP (last_command_event))
     kset_last_repeatable_command (current_kboard, Vreal_this_command);
 
+#if MAC_USE_AUTORELEASE_LOOP
+  mac_autorelease_loop (^
+#else
   while (1)
+#endif
     {
+#if defined (HAVE_MACGUI) && !MAC_USE_AUTORELEASE_LOOP
+      void *pool = mac_alloc_autorelease_pool ();
+#endif
+      Lisp_Object cmd;
+      Lisp_Object keybuf[30];
+      int i;
+
       if (! FRAME_LIVE_P (XFRAME (selected_frame)))
 	Fkill_emacs (Qnil);
 
@@ -1716,7 +1760,17 @@ command_loop_1 (void)
       if (!NILP (KVAR (current_kboard, defining_kbd_macro))
 	  && NILP (KVAR (current_kboard, Vprefix_arg)))
 	finalize_kbd_macro_chars ();
+#if defined (HAVE_MACGUI) && !MAC_USE_AUTORELEASE_LOOP
+      mac_release_autorelease_pool (pool);
+#endif
+#if MAC_USE_AUTORELEASE_LOOP
+      return Qt;
+#endif
     }
+#if MAC_USE_AUTORELEASE_LOOP
+    );
+  return Qnil;
+#endif
 }
 
 /* Adjust point to a boundary of a region that has such a property
@@ -3870,7 +3924,7 @@ kbd_buffer_get_event (KBOARD **kbp,
         }
 #endif
 
-#if defined (HAVE_X11) || defined (HAVE_NTGUI) \
+#if defined (HAVE_X11) || defined (HAVE_NTGUI) || defined (HAVE_MACGUI) \
     || defined (HAVE_NS)
       else if (event->kind == DELETE_WINDOW_EVENT)
 	{
@@ -3880,7 +3934,7 @@ kbd_buffer_get_event (KBOARD **kbp,
 	  kbd_fetch_ptr = event + 1;
 	}
 #endif
-#if defined (HAVE_X11) || defined (HAVE_NTGUI) \
+#if defined (HAVE_X11) || defined (HAVE_NTGUI) || defined (HAVE_MACGUI) \
     || defined (HAVE_NS)
       else if (event->kind == ICONIFY_EVENT)
 	{
@@ -3903,7 +3957,7 @@ kbd_buffer_get_event (KBOARD **kbp,
 	  XSETBUFFER (obj, current_buffer);
 	  kbd_fetch_ptr = event + 1;
 	}
-#if defined (USE_X_TOOLKIT) || defined (HAVE_NTGUI) \
+#if defined (USE_X_TOOLKIT) || defined (HAVE_NTGUI) || defined (HAVE_MACGUI) \
     || defined (HAVE_NS) || defined (USE_GTK)
       else if (event->kind == MENU_BAR_ACTIVATE_EVENT)
 	{
@@ -3913,14 +3967,20 @@ kbd_buffer_get_event (KBOARD **kbp,
 	    x_activate_menubar (XFRAME (event->frame_or_window));
 	}
 #endif
-#ifdef HAVE_NTGUI
+#if defined (HAVE_NTGUI) || defined (HAVE_MACGUI)
       else if (event->kind == LANGUAGE_CHANGE_EVENT)
 	{
+#ifdef HAVE_MACGUI
+	  /* Make an event (language-change (KEY_SCRIPT)).  */
+	  obj = list2 (Qlanguage_change,
+		       list1 (make_number (event->code)));
+#else
 	  /* Make an event (language-change (FRAME CODEPAGE LANGUAGE-ID)).  */
 	  obj = Fcons (Qlanguage_change,
 		       list3 (event->frame_or_window,
 			      make_number (event->code),
 			      make_number (event->modifiers)));
+#endif
 	  kbd_fetch_ptr = event + 1;
 	}
 #endif
@@ -4015,8 +4075,8 @@ kbd_buffer_get_event (KBOARD **kbp,
 	    {
 	      obj = make_lispy_event (event);
 
-#if defined (USE_X_TOOLKIT) || defined (HAVE_NTGUI) \
-    || defined (HAVE_NS) || defined (USE_GTK)
+#if defined (USE_X_TOOLKIT) || defined (HAVE_NTGUI) || defined (HAVE_MACGUI) \
+    || defined(HAVE_NS) || defined (USE_GTK)
 	      /* If this was a menu selection, then set the flag to inhibit
 		 writing to last_nonmenu_event.  Don't do this if the event
 		 we're returning is (menu-bar), though; that indicates the
@@ -5029,6 +5089,10 @@ static Lisp_Object Vlispy_mouse_stem;
 static const char *const lispy_wheel_names[] =
 {
   "wheel-up", "wheel-down", "wheel-left", "wheel-right"
+#ifdef HAVE_MACGUI
+  , "swipe-up", "swipe-down", "swipe-left", "swipe-right",
+  "magnify-up", "magnify-down", "rotate-left", "rotate-right"
+#endif
 };
 
 /* drag-n-drop events are generated when a set of selected files are
@@ -5719,6 +5783,20 @@ make_lispy_event (struct input_event *event)
 
           if (event->kind == HORIZ_WHEEL_EVENT)
             symbol_num += 2;
+#ifdef HAVE_MACGUI
+          if (event->modifiers & drag_modifier)
+	    {
+	      /* Emit a swipe event.  */
+	      event->modifiers &= ~drag_modifier;
+	      symbol_num += 4;
+	    }
+          else if (event->modifiers & click_modifier)
+	    {
+	      /* Emit a maginify/rotate event.  */
+	      event->modifiers &= ~click_modifier;
+	      symbol_num += 8;
+	    }
+#endif
 
 	  is_double = (last_mouse_button == - (1 + symbol_num)
 		       && (eabs (XINT (event->x) - last_mouse_x) <= fuzz)
@@ -5757,11 +5835,34 @@ make_lispy_event (struct input_event *event)
 				      ASIZE (wheel_syms));
 	}
 
-	if (event->modifiers & (double_modifier | triple_modifier))
+	if (event->modifiers & (double_modifier | triple_modifier)
+#ifdef HAVE_MACGUI
+	    || !NILP (event->arg)
+#endif
+	    )
+#ifdef HAVE_MACGUI
+	  {
+	    if (mac_ignore_momentum_wheel_events)
+	      {
+		Lisp_Object phases =
+		  CAR_SAFE (CDR_SAFE (CDR_SAFE (CDR_SAFE (event->arg))));
+		Lisp_Object momentum_phase = CAR_SAFE (CDR_SAFE (phases));
+
+		if (!NILP (momentum_phase)
+		    && !EQ (momentum_phase, make_number (0)))
+		  return Qnil;
+	      }
+#endif
 	  return Fcons (head,
 			Fcons (position,
 			       Fcons (make_number (double_click_count),
+#ifdef HAVE_MACGUI
+				      !NILP (event->arg) ? Fcons (event->arg, Qnil) :
+#endif
 				      Qnil)));
+#ifdef HAVE_MACGUI
+          }
+#endif
 	else
 	  return Fcons (head,
 			Fcons (position,
@@ -5852,8 +5953,8 @@ make_lispy_event (struct input_event *event)
       }
 #endif /* HAVE_MOUSE */
 
-#if defined (USE_X_TOOLKIT) || defined (HAVE_NTGUI) \
-    || defined (HAVE_NS) || defined (USE_GTK)
+#if defined (USE_X_TOOLKIT) || defined (HAVE_NTGUI) || defined (HAVE_MACGUI) \
+    || defined(HAVE_NS) || defined (USE_GTK)
     case MENU_BAR_EVENT:
       if (EQ (event->arg, event->frame_or_window))
 	/* This is the prefix key.  We translate this to
@@ -5890,6 +5991,19 @@ make_lispy_event (struct input_event *event)
 
     case SAVE_SESSION_EVENT:
       return Qsave_session;
+
+#ifdef HAVE_MACGUI
+    case MAC_APPLE_EVENT:
+      {
+	Lisp_Object spec[2];
+
+	spec[0] = event->x;
+	spec[1] = event->y;
+	return Fcons (Qmac_apple_event,
+		      Fcons (Fvector (2, spec),
+			     Fcons (event->arg, Qnil)));
+      }
+#endif
 
 #ifdef HAVE_DBUS
     case DBUS_EVENT:
@@ -7169,6 +7283,8 @@ struct user_signal_info
 /* List of user signals.  */
 static struct user_signal_info *user_signals = NULL;
 
+void (*handle_user_signal_hook) (int);
+
 void
 add_user_signal (int sig, const char *name)
 {
@@ -7217,6 +7333,8 @@ handle_user_signal (int sig)
           }
 
 	p->npending++;
+	if (handle_user_signal_hook)
+	  (*handle_user_signal_hook) (sig);
 #ifdef USABLE_SIGIO
 	if (interrupt_input)
 	  handle_input_available_signal (sig);
@@ -8129,7 +8247,7 @@ parse_tool_bar_item (Lisp_Object key, Lisp_Object item)
       if (menu_separator_name_p (SSDATA (caption)))
 	{
 	  set_prop (TOOL_BAR_ITEM_TYPE, Qt);
-#if !defined (USE_GTK) && !defined (HAVE_NS)
+#if !defined (USE_GTK) && !defined (HAVE_MACGUI) && !defined (HAVE_NS)
 	  /* If we use build_desired_tool_bar_string to render the
 	     tool bar, the separator is rendered as an image.  */
 	  PROP (TOOL_BAR_ITEM_IMAGES)
@@ -11297,8 +11415,11 @@ init_keyboard (void)
 
 #ifdef POLL_FOR_INPUT
   poll_timer = NULL;
-  poll_suppress_count = 1;
-  start_polling ();
+  if (!interrupt_input)
+    {
+      poll_suppress_count = 1;
+      start_polling ();
+    }
 #endif
 }
 
@@ -11362,8 +11483,13 @@ syms_of_keyboard (void)
   DEFSYM (Qconfig_changed_event, "config-changed-event");
   DEFSYM (Qmenu_enable, "menu-enable");
 
-#ifdef HAVE_NTGUI
+#if defined (HAVE_NTGUI) || defined (HAVE_MACGUI)
   DEFSYM (Qlanguage_change, "language-change");
+#endif
+
+#ifdef HAVE_MACGUI
+  Qmac_apple_event = intern ("mac-apple-event");
+  staticpro (&Qmac_apple_event);
 #endif
 
 #ifdef HAVE_DBUS

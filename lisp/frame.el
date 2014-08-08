@@ -773,7 +773,7 @@ recently selected windows nor the buffer list."
   (select-frame frame norecord)
   (raise-frame frame)
   ;; Ensure, if possible, that FRAME gets input focus.
-  (when (memq (window-system frame) '(x w32 ns))
+  (when (memq (window-system frame) '(x mac w32 ns))
     (x-focus-frame frame))
   ;; Move mouse cursor if necessary.
   (cond
@@ -827,7 +827,7 @@ Calls `suspend-emacs' if invoked from the controlling tty device,
   (interactive)
   (let ((type (framep (selected-frame))))
     (cond
-     ((memq type '(x ns w32)) (iconify-or-deiconify-frame))
+     ((memq type '(x ns w32 mac)) (iconify-or-deiconify-frame))
      ((eq type t)
       (if (controlling-tty-p)
 	  (suspend-emacs)
@@ -1257,6 +1257,23 @@ bars (top, bottom, or nil)."
     (unless (memq vert '(left right nil))
       (setq vert default-frame-scroll-bars))
     (cons vert hor)))
+
+(defun frame-monitor-attributes (&optional frame)
+  "Return the attributes of the physical monitor dominating FRAME.
+If FRAME is omitted, describe the currently selected frame.
+
+A frame is dominated by a physical monitor when either the
+largest area of the frame resides in the monitor, or the monitor
+is the closest to the frame if the frame does not intersect any
+physical monitors.
+
+See `display-monitor-attributes-list' for the list of attribute
+keys and their meanings."
+  (or frame (setq frame (selected-frame)))
+  (cl-loop for attributes in (display-monitor-attributes-list frame)
+	   for frames = (cdr (assq 'frames attributes))
+	   if (memq frame frames) return attributes))
+
 
 ;;;; Frame/display capabilities.
 (defun selected-terminal ()
@@ -1276,8 +1293,8 @@ frame's display)."
      ((eq frame-type 'w32)
       (with-no-warnings
        (> w32-num-mouse-buttons 0)))
-     ((memq frame-type '(x ns))
-      t)    ;; We assume X and NeXTstep *always* have a pointing device
+     ((memq frame-type '(x mac ns))
+      t)    ;; We assume X, Mac, and NeXTstep *always* have a pointing device
      (t
       (or (and (featurep 'xt-mouse)
 	       xterm-mouse-mode)
@@ -1292,7 +1309,7 @@ frame's display).
 Support for popup menus requires that the mouse be available."
   (and
    (let ((frame-type (framep-on-display display)))
-     (memq frame-type '(x w32 pc ns)))
+     (memq frame-type '(x w32 pc mac ns)))
    (display-mouse-p display)))
 
 (defun display-graphic-p (&optional display)
@@ -1302,7 +1319,7 @@ frames and several different fonts at once.  This is true for displays
 that use a window system such as X, and false for text-only terminals.
 DISPLAY can be a display name, a frame, or nil (meaning the selected
 frame's display)."
-  (not (null (memq (framep-on-display display) '(x w32 ns)))))
+  (not (null (memq (framep-on-display display) '(x w32 mac ns)))))
 
 (defun display-images-p (&optional display)
   "Return non-nil if DISPLAY can display images.
@@ -1329,7 +1346,7 @@ frame's display)."
       ;; the Windows' DOS Box.
       (with-no-warnings
        (not (null dos-windows-version))))
-     ((memq frame-type '(x w32 ns))
+     ((memq frame-type '(x w32 mac ns))
       t)    ;; FIXME?
      (t
       nil))))
@@ -1340,7 +1357,7 @@ frame's display)."
   "Return the number of screens associated with DISPLAY."
   (let ((frame-type (framep-on-display display)))
     (cond
-     ((memq frame-type '(x w32 ns))
+     ((memq frame-type '(x w32 mac ns))
       (x-display-screens display))
      (t
       1))))
@@ -1349,10 +1366,14 @@ frame's display)."
 
 (defun display-pixel-height (&optional display)
   "Return the height of DISPLAY's screen in pixels.
-For character terminals, each character counts as a single pixel."
+For character terminals, each character counts as a single pixel.
+For graphical terminals, note that on \"multi-monitor\" setups this
+refers to the pixel height for all physical monitors associated
+with DISPLAY.  To get information for each physical monitor, use
+`display-monitor-attributes-list'."
   (let ((frame-type (framep-on-display display)))
     (cond
-     ((memq frame-type '(x w32 ns))
+     ((memq frame-type '(x w32 mac ns))
       (x-display-pixel-height display))
      (t
       (frame-height (if (framep display) display (selected-frame)))))))
@@ -1361,10 +1382,14 @@ For character terminals, each character counts as a single pixel."
 
 (defun display-pixel-width (&optional display)
   "Return the width of DISPLAY's screen in pixels.
-For character terminals, each character counts as a single pixel."
+For character terminals, each character counts as a single pixel.
+For graphical terminals, note that on \"multi-monitor\" setups this
+refers to the pixel width for all physical monitors associated
+with DISPLAY.  To get information for each physical monitor, use
+`display-monitor-attributes-list'."
   (let ((frame-type (framep-on-display display)))
     (cond
-     ((memq frame-type '(x w32 ns))
+     ((memq frame-type '(x w32 mac ns))
       (x-display-pixel-width display))
      (t
       (frame-width (if (framep display) display (selected-frame)))))))
@@ -1392,8 +1417,12 @@ displays not explicitly specified."
 (defun display-mm-height (&optional display)
   "Return the height of DISPLAY's screen in millimeters.
 System values can be overridden by `display-mm-dimensions-alist'.
-If the information is unavailable, value is nil."
-  (and (memq (framep-on-display display) '(x w32 ns))
+If the information is unavailable, value is nil.
+For graphical terminals, note that on \"multi-monitor\" setups this
+refers to the height in millimeters for all physical monitors
+associated with DISPLAY.  To get information for each physical
+monitor, use `display-monitor-attributes-list'."
+  (and (memq (framep-on-display display) '(x w32 mac ns))
        (or (cddr (assoc (or display (frame-parameter nil 'display))
 			display-mm-dimensions-alist))
 	   (cddr (assoc t display-mm-dimensions-alist))
@@ -1404,8 +1433,12 @@ If the information is unavailable, value is nil."
 (defun display-mm-width (&optional display)
   "Return the width of DISPLAY's screen in millimeters.
 System values can be overridden by `display-mm-dimensions-alist'.
-If the information is unavailable, value is nil."
-  (and (memq (framep-on-display display) '(x w32 ns))
+If the information is unavailable, value is nil.
+For graphical terminals, note that on \"multi-monitor\" setups this
+refers to the width in millimeters for all physical monitors
+associated with DISPLAY.  To get information for each physical
+monitor, use `display-monitor-attributes-list'."
+  (and (memq (framep-on-display display) '(x w32 mac ns))
        (or (cadr (assoc (or display (frame-parameter nil 'display))
 			display-mm-dimensions-alist))
 	   (cadr (assoc t display-mm-dimensions-alist))
@@ -1419,7 +1452,7 @@ The value may be `always', `when-mapped', `not-useful', or nil if
 the question is inapplicable to a certain kind of display."
   (let ((frame-type (framep-on-display display)))
     (cond
-     ((memq frame-type '(x w32 ns))
+     ((memq frame-type '(x w32 mac ns))
       (x-display-backing-store display))
      (t
       'not-useful))))
@@ -1430,7 +1463,7 @@ the question is inapplicable to a certain kind of display."
   "Return non-nil if DISPLAY's screen supports the SaveUnder feature."
   (let ((frame-type (framep-on-display display)))
     (cond
-     ((memq frame-type '(x w32 ns))
+     ((memq frame-type '(x w32 mac ns))
       (x-display-save-under display))
      (t
       'not-useful))))
@@ -1441,7 +1474,7 @@ the question is inapplicable to a certain kind of display."
   "Return the number of planes supported by DISPLAY."
   (let ((frame-type (framep-on-display display)))
     (cond
-     ((memq frame-type '(x w32 ns))
+     ((memq frame-type '(x w32 mac ns))
       (x-display-planes display))
      ((eq frame-type 'pc)
       4)
@@ -1454,7 +1487,7 @@ the question is inapplicable to a certain kind of display."
   "Return the number of color cells supported by DISPLAY."
   (let ((frame-type (framep-on-display display)))
     (cond
-     ((memq frame-type '(x w32 ns))
+     ((memq frame-type '(x w32 mac ns))
       (x-display-color-cells display))
      ((eq frame-type 'pc)
       16)
@@ -1469,13 +1502,57 @@ The value is one of the symbols `static-gray', `gray-scale',
 `static-color', `pseudo-color', `true-color', or `direct-color'."
   (let ((frame-type (framep-on-display display)))
     (cond
-     ((memq frame-type '(x w32 ns))
+     ((memq frame-type '(x w32 mac ns))
       (x-display-visual-class display))
      ((and (memq frame-type '(pc t))
 	   (tty-display-color-p display))
       'static-color)
      (t
       'static-gray))))
+
+(declare-function mac-display-monitor-attributes-list "macfns.c"
+		  (&optional terminal))
+
+(defun display-monitor-attributes-list (&optional display)
+  "Return a list of physical monitor attributes on DISPLAY.
+Each element of the list represents the attributes of each
+physical monitor.  The first element corresponds to the primary
+monitor.
+
+Attributes for a physical monitor is represented as an alist of
+attribute keys and values as follows:
+
+ geometry -- Position and size in pixels in the form of
+	     (X Y WIDTH HEIGHT)
+ workarea -- Position and size of the workarea in pixels in the
+	     form of (X Y WIDTH HEIGHT)
+ mm-size  -- Width and height in millimeters in the form of
+ 	     (WIDTH HEIGHT)
+ frames   -- List of frames dominated by the physical monitor
+ name (*) -- Name of the physical monitor as a string
+
+where X, Y, WIDTH, and HEIGHT are integers.  Keys labeled
+with (*) are optional.
+
+A frame is dominated by a physical monitor when either the
+largest area of the frame resides in the monitor, or the monitor
+is the closest to the frame if the frame does not intersect any
+physical monitors.  Every non-tip frame (including invisible one)
+in a graphical display is dominated by exactly one physical
+monitor at a time, though it can span multiple (or no) physical
+monitors."
+  (let ((frame-type (framep-on-display display)))
+    (cond
+     ((eq frame-type 'mac)
+      (mac-display-monitor-attributes-list display))
+     (t
+      (let ((geometry (list 0 0 (display-pixel-width display)
+			    (display-pixel-height display))))
+	`(((geometry . ,geometry)
+	   (workarea . ,geometry)
+	   (mm-size . (,(display-mm-width display)
+		       ,(display-mm-height display)))
+	   (frames . ,(frames-on-display-list display)))))))))
 
 
 ;;;; Frame geometry values
@@ -1638,7 +1715,7 @@ terminals, cursor blinking is controlled by the terminal."
   :init-value (not (or noninteractive
 		       no-blinking-cursor
 		       (eq system-type 'ms-dos)
-		       (not (memq window-system '(x w32 ns)))))
+		       (not (memq window-system '(x w32 mac ns)))))
   :initialize 'custom-initialize-delay
   :group 'cursor
   :global t

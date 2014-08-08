@@ -731,6 +731,9 @@ extern Lisp_Object merge_font_spec (Lisp_Object, Lisp_Object);
 
 extern Lisp_Object font_make_entity (void);
 extern Lisp_Object font_make_object (int, Lisp_Object, int);
+#ifdef HAVE_MACGUI
+extern Lisp_Object font_make_spec (void);
+#endif
 
 extern Lisp_Object find_font_encoding (Lisp_Object);
 extern int font_registry_charsets (Lisp_Object, struct charset **,
@@ -824,6 +827,11 @@ extern struct font_driver w32font_driver;
 extern struct font_driver uniscribe_font_driver;
 extern void syms_of_w32font (void);
 #endif	/* HAVE_NTGUI */
+#ifdef HAVE_MACGUI
+extern void mac_register_font_driver (struct frame *);
+extern struct font_driver macfont_driver;
+extern void syms_of_macfont (void);
+#endif	/* HAVE_MACGUI */
 #ifdef HAVE_NS
 extern Lisp_Object Qfontsize;
 extern struct font_driver nsfont_driver;

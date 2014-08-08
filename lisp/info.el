@@ -179,7 +179,7 @@ A header-line does not scroll with the rest of the buffer."
   (let* ((config-dir
 	  (file-name-as-directory
 	   ;; Self-contained NS build with info/ in the app-bundle.
-	   (or (and (featurep 'ns)
+	   (or (and (or (featurep 'ns) (featurep 'mac))
 		    (let ((dir (expand-file-name "../info" data-directory)))
 		      (if (file-directory-p dir) dir)))
 	       configure-info-directory)))
@@ -735,7 +735,7 @@ in `Info-file-supports-index-cookies-list'."
       ;; but there's no way to get it at the head of Info-directory-list
       ;; except by doing it here.
       (and path
-	   (featurep 'ns)
+	   (or (featurep 'ns) (featurep 'mac))
 	   (let ((dir (expand-file-name "../info" data-directory)))
 	     (and (file-directory-p dir)
 		  (not (member dir (split-string path ":" t)))
@@ -4559,7 +4559,7 @@ first line or header line, and for breadcrumb links.")
           ;; This is a serious problem for trying to handle multiple
           ;; frame types at once.  We want this text to be invisible
           ;; on frames that can display the font above.
-          (when (memq (framep (selected-frame)) '(x pc w32 ns))
+          (when (memq (framep (selected-frame)) '(x pc w32 mac ns))
             (add-text-properties (1- (match-beginning 2)) (match-end 2)
                                  '(invisible t front-sticky nil rear-nonsticky t)))))
 

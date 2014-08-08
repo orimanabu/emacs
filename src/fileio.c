@@ -2666,13 +2666,12 @@ See also `file-exists-p' and `file-attributes'.  */)
 
   absname = ENCODE_FILE (absname);
 
-#if defined (DOS_NT) || defined (macintosh)
-  /* Under MS-DOS, Windows, and Macintosh, open does not work for
-     directories.  */
+#if defined (DOS_NT)
+  /* Under MS-DOS, Windows, open does not work for directories.  */
   if (access (SDATA (absname), 0) == 0)
     return Qt;
   return Qnil;
-#else /* not DOS_NT and not macintosh */
+#else /* not DOS_NT */
   flags = O_RDONLY;
 #ifdef O_NONBLOCK
   /* Opening a fifo without O_NONBLOCK can wait.
@@ -2689,7 +2688,7 @@ See also `file-exists-p' and `file-attributes'.  */)
     return Qnil;
   emacs_close (desc);
   return Qt;
-#endif /* not DOS_NT and not macintosh */
+#endif /* not DOS_NT */
 }
 
 /* Having this before file-symlink-p mysteriously caused it to be forgotten
@@ -5653,7 +5652,7 @@ before any other event (mouse or keypress) is handled.  */)
   (void)
 {
 #if defined (USE_MOTIF) || defined (HAVE_NTGUI) || defined (USE_GTK) \
-  || defined (HAVE_NS)
+  || defined (HAVE_MACGUI) || defined (HAVE_NS)
   if ((NILP (last_nonmenu_event) || CONSP (last_nonmenu_event))
       && use_dialog_box
       && use_file_dialog

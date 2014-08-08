@@ -849,8 +849,10 @@ This handles splitting the command if it would be bigger than
     ;; does not understand and throws an error.
     ;; It may also be a valid X display, but if Emacs is compiled for ns, it
     ;; can not make X frames.
-    (if (featurep 'ns-win)
-	(setq w 'ns display "ns"))
+    (cond ((featurep 'ns-win)
+	   (setq w 'ns display "ns"))
+	  ((eq window-system 'mac)
+	   (setq w 'mac display "Mac")))
 
     (cond (w
            ;; Flag frame as client-created, but use a dummy client.
@@ -1141,8 +1143,9 @@ The following commands are accepted by the client:
                  ;; type to GUI.  (Cygwin is perfectly happy with
                  ;; multi-tty support, so don't override the user's
                  ;; choice there.)
-                 (when (and (eq system-type 'windows-nt)
-                            (eq window-system 'w32))
+                 (when (or (and (eq system-type 'windows-nt)
+				(eq window-system 'w32))
+			   (eq window-system 'mac))
                    (push "-window-system" args-left)))
 
                 ;; -position LINE[:COLUMN]:  Set point to the given

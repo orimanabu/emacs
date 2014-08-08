@@ -400,6 +400,7 @@ init_cmdargs (int argc, char **argv, int skip_args)
   if (!NILP (Vinvocation_directory))
     {
       dir = Vinvocation_directory;
+      name = Fexpand_file_name (Vinvocation_name, dir);
 #ifdef WINDOWSNT
       /* If we are running from the build directory, set DIR to the
 	 src subdirectory of the Emacs tree, like on Posix
@@ -408,9 +409,16 @@ init_cmdargs (int argc, char **argv, int skip_args)
 	  && 0 == strcmp (SSDATA (dir) + SBYTES (dir) - sizeof ("/i386/") + 1,
 			  "/i386/"))
 	dir = Fexpand_file_name (build_string ("../.."), dir);
-#else  /* !WINDOWSNT */
-#endif
       name = Fexpand_file_name (Vinvocation_name, dir);
+#elif defined (HAVE_MACGUI)
+      /* If we are running from the build directory, set DIR to the
+	 src subdirectory of the Emacs tree.  */
+      if (SBYTES (dir) > sizeof ("/mac/Emacs.app/Contents/MacOS/") - 1
+	  && 0 == strcmp ((SSDATA (dir) + SBYTES (dir)
+			   - sizeof ("/mac/Emacs.app/Contents/MacOS/") + 1),
+			  "/mac/Emacs.app/Contents/MacOS/"))
+	dir = Fexpand_file_name (build_string ("../../../../src"), dir);
+#endif
       while (1)
 	{
 	  Lisp_Object tem, lib_src_exists;
@@ -1260,6 +1268,11 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
   init_ntproc (dumping); /* must precede init_editfns.  */
 #endif
 
+#ifdef HAVE_MACGUI
+  if (initialized)
+    init_mac_osx_environment ();
+#endif
+
   /* Initialize and GC-protect Vinitial_environment and
      Vprocess_environment before set_initial_environment fills them
      in.  */
@@ -1391,6 +1404,15 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
 #if defined WINDOWSNT || defined HAVE_NTGUI
       syms_of_w32select ();
 #endif
+
+#ifdef HAVE_MACGUI
+      syms_of_mac ();
+      syms_of_macterm ();
+      syms_of_macfns ();
+      syms_of_macmenu ();
+      syms_of_macselect ();
+      syms_of_fontset ();
+#endif /* HAVE_MACGUI */
 
 #ifdef MSDOS
       syms_of_xmenu ();

@@ -784,14 +784,14 @@ static ptrdiff_t const STRING_BYTES_BOUND =
 
 /* Mark STR as a unibyte string.  */
 #define STRING_SET_UNIBYTE(STR)  \
-  do { if (EQ (STR, empty_multibyte_string))  \
+  do { if (XSTRING (STR)->size == 0)  \
       (STR) = empty_unibyte_string;  \
     else XSTRING (STR)->size_byte = -1; } while (0)
 
 /* Mark STR as a multibyte string.  Assure that STR contains only
    ASCII characters in advance.  */
 #define STRING_SET_MULTIBYTE(STR)  \
-  do { if (EQ (STR, empty_unibyte_string))  \
+  do { if (XSTRING (STR)->size == 0)  \
       (STR) = empty_multibyte_string;  \
     else XSTRING (STR)->size_byte = XSTRING (STR)->size; } while (0)
 
@@ -1688,6 +1688,16 @@ typedef struct {
    : RANGED_INTEGERP (0, x, TYPE_MAXIMUM (type)))
 
 #define INTEGERP(x) (LISP_INT_TAG_P (XTYPE ((x))))
+#if defined USE_LSB_TAG && !(LONG_MAX < LLONG_MAX && defined WIDE_EMACS_INT)
+/* Below usually gives shorter instructions.  */
+#define SYMBOLP(x) (XTYPE (XIL (XUNTAG (x, Lisp_Symbol))) == 0)
+#define MISCP(x) (XTYPE (XIL (XUNTAG (x, Lisp_Misc))) == 0)
+#define VECTORLIKEP(x) (XTYPE (XIL (XUNTAG (x, Lisp_Vectorlike))) == 0)
+#define STRINGP(x) (XTYPE (XIL (XUNTAG (x, Lisp_String))) == 0)
+#define CONSP(x) (XTYPE (XIL (XUNTAG (x, Lisp_Cons))) == 0)
+
+#define FLOATP(x) (XTYPE (XIL (XUNTAG (x, Lisp_Float))) == 0)
+#else
 #define SYMBOLP(x) (XTYPE ((x)) == Lisp_Symbol)
 #define MISCP(x) (XTYPE ((x)) == Lisp_Misc)
 #define VECTORLIKEP(x) (XTYPE ((x)) == Lisp_Vectorlike)
@@ -1695,6 +1705,7 @@ typedef struct {
 #define CONSP(x) (XTYPE ((x)) == Lisp_Cons)
 
 #define FLOATP(x) (XTYPE ((x)) == Lisp_Float)
+#endif
 #define VECTORP(x) (VECTORLIKEP (x) && !(ASIZE (x) & PSEUDOVECTOR_FLAG))
 #define OVERLAYP(x) (MISCP (x) && XMISCTYPE (x) == Lisp_Misc_Overlay)
 #define MARKERP(x) (MISCP (x) && XMISCTYPE (x) == Lisp_Misc_Marker)
@@ -2858,6 +2869,9 @@ extern Lisp_Object Qleft_margin, Qright_margin;
 extern Lisp_Object Qglyphless_char;
 extern Lisp_Object QCdata, QCfile;
 extern Lisp_Object QCmap;
+#ifdef HAVE_MACGUI
+extern Lisp_Object Qrect;
+#endif
 extern Lisp_Object Qrisky_local_variable;
 extern struct frame *last_glyphless_glyph_frame;
 extern int last_glyphless_glyph_face_id;
@@ -3060,6 +3074,9 @@ extern ptrdiff_t evxprintf (char **, ptrdiff_t *, char const *, ptrdiff_t,
   ATTRIBUTE_FORMAT_PRINTF (5, 0);
 
 /* Defined in lread.c.  */
+#ifdef HAVE_MACGUI
+extern Lisp_Object Qdata, Qsize;
+#endif
 extern Lisp_Object Qvariable_documentation, Qstandard_input;
 extern Lisp_Object Qbackquote, Qcomma, Qcomma_at, Qcomma_dot, Qfunction;
 extern Lisp_Object Qlexical_binding;
@@ -3322,7 +3339,7 @@ extern Lisp_Object Qvisible;
 extern void store_frame_param (struct frame *, Lisp_Object, Lisp_Object);
 extern void store_in_alist (Lisp_Object *, Lisp_Object, Lisp_Object);
 extern Lisp_Object do_switch_frame (Lisp_Object, int, int, Lisp_Object);
-#if HAVE_NS
+#if defined (HAVE_MACGUI) || HAVE_NS
 extern Lisp_Object get_frame_param (struct frame *, Lisp_Object);
 #endif
 extern Lisp_Object frame_buffer_predicate (Lisp_Object);
@@ -3574,6 +3591,27 @@ extern void syms_of_xterm (void);
 extern char *x_get_keysym_name (int);
 #endif /* HAVE_WINDOW_SYSTEM */
 
+#ifdef HAVE_MACGUI
+/* Defined in macfns.c */
+extern void syms_of_macfns (void);
+
+/* Defined in macselect.c */
+extern void syms_of_macselect (void);
+
+/* Defined in macterm.c */
+extern void syms_of_macterm (void);
+
+/* Defined in macmenu.c */
+extern void syms_of_macmenu (void);
+
+/* Defined in mac.c */
+extern const char *mac_etc_directory;
+extern const char *mac_exec_path;
+extern const char *mac_load_path;
+extern void syms_of_mac (void);
+extern void init_mac_osx_environment (void);
+#endif /* HAVE_MACGUI */
+
 #ifdef HAVE_LIBXML2
 /* Defined in xml.c.  */
 extern void syms_of_xml (void);
@@ -3581,7 +3619,7 @@ extern void xml_cleanup_parser (void);
 #endif
 
 #ifdef HAVE_MENUS
-/* Defined in (x|w32)fns.c, nsfns.m...  */
+/* Defined in (x|mac|w32)fns.c, nsfns.m...  */
 extern int have_menus_p (void);
 #endif
 

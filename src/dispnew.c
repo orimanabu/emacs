@@ -6242,6 +6242,16 @@ init_display (void)
     }
 #endif /* HAVE_NTGUI */
 
+#ifdef HAVE_MACGUI
+  if (!inhibit_window_system)
+    {
+      Vinitial_window_system = Qmac;
+      Vwindow_system_version = make_number (10);
+      adjust_frame_glyphs_initially ();
+      return;
+    }
+#endif /* HAVE_MACGUI */
+
 #ifdef HAVE_NS
   if (!inhibit_window_system
 #ifndef CANNOT_DUMP
@@ -6474,6 +6484,7 @@ The value is a symbol:
  nil for a termcap frame (a character-only terminal),
  'x' for an Emacs frame that is really an X window,
  'w32' for an Emacs frame that is a window on MS-Windows display,
+ 'mac' for an Emacs frame on a Mac display,
  'ns' for an Emacs frame on a GNUstep or Macintosh Cocoa display,
  'pc' for a direct-write MS-DOS frame.
 
@@ -6487,6 +6498,7 @@ The value is a symbol:
  nil for a termcap frame (a character-only terminal),
  'x' for an Emacs frame that is really an X window,
  'w32' for an Emacs frame that is a window on MS-Windows display,
+ 'mac' for an Emacs frame on a Mac display,
  'ns' for an Emacs frame on a GNUstep or Macintosh Cocoa display,
  'pc' for a direct-write MS-DOS frame.
 

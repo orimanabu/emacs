@@ -306,6 +306,9 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #ifdef HAVE_NTGUI
 #include "w32term.h"
 #endif
+#ifdef HAVE_MACGUI
+#include "macterm.h"
+#endif
 #ifdef HAVE_NS
 #include "nsterm.h"
 #endif
@@ -443,7 +446,11 @@ Lisp_Object Qimage;
 /* The image map types.  */
 Lisp_Object QCmap;
 static Lisp_Object QCpointer;
-static Lisp_Object Qrect, Qcircle, Qpoly;
+#ifndef HAVE_MACGUI
+static
+#endif
+Lisp_Object Qrect;
+static Lisp_Object Qcircle, Qpoly;
 
 /* Tool bar styles */
 Lisp_Object Qboth, Qboth_horiz, Qtext_image_horiz;
@@ -1853,7 +1860,9 @@ pixel_to_glyph_coords (FRAME_PTR f, register int pix_x, register int pix_y,
    text, or we can't tell because W's current matrix is not up to
    date.  */
 
+#ifndef HAVE_MACGUI
 static
+#endif
 struct glyph *
 x_y_to_hpos_vpos (struct window *w, int x, int y, int *hpos, int *vpos,
 		  int *dx, int *dy, int *area)
@@ -1930,7 +1939,10 @@ x_y_to_hpos_vpos (struct window *w, int x, int y, int *hpos, int *vpos,
 /* Convert frame-relative x/y to coordinates relative to window W.
    Takes pseudo-windows into account.  */
 
-static void
+#ifndef HAVE_MACGUI
+static
+#endif
+void
 frame_to_window_pixel_xy (struct window *w, int *x, int *y)
 {
   if (w->pseudo_window_p)
@@ -11245,6 +11257,9 @@ prepare_menu_bars (void)
 	  menu_bar_hooks_run = update_menu_bar (f, 0, menu_bar_hooks_run);
 #ifdef HAVE_WINDOW_SYSTEM
 	  update_tool_bar (f, 0);
+#ifdef HAVE_MACGUI
+	  mac_update_title_bar (f, 0);
+#endif
 #endif
 #ifdef HAVE_NS
           if (windows_or_buffers_changed
@@ -11263,6 +11278,9 @@ prepare_menu_bars (void)
       update_menu_bar (sf, 1, 0);
 #ifdef HAVE_WINDOW_SYSTEM
       update_tool_bar (sf, 1);
+#ifdef HAVE_MACGUI
+      mac_update_title_bar (sf, 1);
+#endif
 #endif
     }
 }
@@ -11296,7 +11314,7 @@ update_menu_bar (struct frame *f, int save_match_data, int hooks_run)
 
   if (FRAME_WINDOW_P (f)
       ?
-#if defined (USE_X_TOOLKIT) || defined (HAVE_NTGUI) \
+#if defined (USE_X_TOOLKIT) || defined (HAVE_NTGUI) || defined (HAVE_MACGUI) \
     || defined (HAVE_NS) || defined (USE_GTK)
       FRAME_EXTERNAL_MENU_BAR (f)
 #else
@@ -11355,11 +11373,11 @@ update_menu_bar (struct frame *f, int save_match_data, int hooks_run)
 	  fset_menu_bar_items (f, menu_bar_items (FRAME_MENU_BAR_ITEMS (f)));
 
 	  /* Redisplay the menu bar in case we changed it.  */
-#if defined (USE_X_TOOLKIT) || defined (HAVE_NTGUI) \
+#if defined (USE_X_TOOLKIT) || defined (HAVE_NTGUI) || defined (HAVE_MACGUI) \
     || defined (HAVE_NS) || defined (USE_GTK)
 	  if (FRAME_WINDOW_P (f))
             {
-#if defined (HAVE_NS)
+#if defined (HAVE_MACGUI) || defined (HAVE_NS)
               /* All frames on Mac OS share the same menubar.  So only
                  the selected frame should be allowed to set it.  */
               if (f == SELECTED_FRAME ())
@@ -11370,11 +11388,11 @@ update_menu_bar (struct frame *f, int save_match_data, int hooks_run)
 	    /* On a terminal screen, the menu bar is an ordinary screen
 	       line, and this makes it get updated.  */
 	    w->update_mode_line = 1;
-#else /* ! (USE_X_TOOLKIT || HAVE_NTGUI || HAVE_NS || USE_GTK) */
+#else /* ! (USE_X_TOOLKIT || HAVE_NTGUI || HAVE_MACGUI || HAVE_NS || USE_GTK) */
 	  /* In the non-toolkit version, the menu bar is an ordinary screen
 	     line, and this makes it get updated.  */
 	  w->update_mode_line = 1;
-#endif /* ! (USE_X_TOOLKIT || HAVE_NTGUI || HAVE_NS || USE_GTK) */
+#endif /* ! (USE_X_TOOLKIT || HAVE_NTGUI || HAVE_MACGUI || HAVE_NS || USE_GTK) */
 
 	  unbind_to (count, Qnil);
 	  set_buffer_internal_1 (prev);
@@ -11472,6 +11490,13 @@ FRAME_PTR last_mouse_frame;
 
 int last_tool_bar_item;
 
+#if defined (USE_GTK) || defined (HAVE_NS)
+#define FRAME_TOOLKIT_TOOL_BAR_P(f)	1
+#elif defined (HAVE_MACGUI)
+#define FRAME_TOOLKIT_TOOL_BAR_P(f)	(!(FRAME_MAC_P (f) && FRAME_NATIVE_TOOL_BAR_P (f)))
+#else
+#define FRAME_TOOLKIT_TOOL_BAR_P(f)	0
+#endif
 
 static Lisp_Object
 update_tool_bar_unwind (Lisp_Object frame)
@@ -11488,12 +11513,13 @@ update_tool_bar_unwind (Lisp_Object frame)
 static void
 update_tool_bar (struct frame *f, int save_match_data)
 {
-#if defined (USE_GTK) || defined (HAVE_NS)
-  int do_update = FRAME_EXTERNAL_TOOL_BAR (f);
-#else
-  int do_update = WINDOWP (f->tool_bar_window)
-    && WINDOW_TOTAL_LINES (XWINDOW (f->tool_bar_window)) > 0;
-#endif
+  int do_update;
+
+  if (FRAME_TOOLKIT_TOOL_BAR_P (f))
+    do_update = FRAME_EXTERNAL_TOOL_BAR (f);
+  else
+    do_update = WINDOWP (f->tool_bar_window)
+      && WINDOW_TOTAL_LINES (XWINDOW (f->tool_bar_window)) > 0;
 
   if (do_update)
     {
@@ -11957,11 +11983,12 @@ redisplay_tool_bar (struct frame *f)
   struct it it;
   struct glyph_row *row;
 
-#if defined (USE_GTK) || defined (HAVE_NS)
-  if (FRAME_EXTERNAL_TOOL_BAR (f))
-    update_frame_tool_bar (f);
-  return 0;
-#endif
+  if (FRAME_TOOLKIT_TOOL_BAR_P (f))
+    {
+      if (FRAME_EXTERNAL_TOOL_BAR (f))
+	update_frame_tool_bar (f);
+      return 0;
+    }
 
   /* If frame hasn't a tool-bar window or if it is zero-height, don't
      do anything.  This means you must start with tool-bar-lines
@@ -12999,7 +13026,7 @@ redisplay_internal (void)
   if (!fr->glyphs_initialized_p)
     return;
 
-#if defined (USE_X_TOOLKIT) || defined (USE_GTK) || defined (HAVE_NS)
+#if defined (USE_X_TOOLKIT) || defined (USE_GTK) || defined (HAVE_MACGUI) || defined (HAVE_NS)
   if (popup_activated ())
     return;
 #endif
@@ -15673,6 +15700,9 @@ redisplay_window (Lisp_Object window, int just_this_one_p)
       int new_vpos = -1;
 
       w->force_start = 0;
+#ifdef HAVE_MACGUI
+      if (!mac_redisplay_dont_reset_vscroll)
+#endif
       w->vscroll = 0;
       wset_window_end_valid (w, Qnil);
 
@@ -16235,7 +16265,7 @@ redisplay_window (Lisp_Object window, int just_this_one_p)
 
       if (FRAME_WINDOW_P (f))
 	{
-#if defined (USE_X_TOOLKIT) || defined (HAVE_NTGUI) \
+#if defined (USE_X_TOOLKIT) || defined (HAVE_NTGUI) || defined (HAVE_MACGUI) \
     || defined (HAVE_NS) || defined (USE_GTK)
 	  redisplay_menu_p = FRAME_EXTERNAL_MENU_BAR (f);
 #else
@@ -16251,15 +16281,20 @@ redisplay_window (Lisp_Object window, int just_this_one_p)
 #ifdef HAVE_WINDOW_SYSTEM
       if (FRAME_WINDOW_P (f))
         {
-#if defined (USE_GTK) || defined (HAVE_NS)
-	  if (FRAME_EXTERNAL_TOOL_BAR (f))
-	    redisplay_tool_bar (f);
-#else
-	  if (WINDOWP (f->tool_bar_window)
-	      && (FRAME_TOOL_BAR_LINES (f) > 0
-		  || !NILP (Vauto_resize_tool_bars))
-	      && redisplay_tool_bar (f))
-	    ignore_mouse_drag_p = 1;
+	  if (FRAME_TOOLKIT_TOOL_BAR_P (f))
+	    {
+	      if (FRAME_EXTERNAL_TOOL_BAR (f))
+		redisplay_tool_bar (f);
+	    }
+#if !defined (USE_GTK) && !defined (HAVE_NS)
+	  else
+	    {
+	      if (WINDOWP (f->tool_bar_window)
+		  && (FRAME_TOOL_BAR_LINES (f) > 0
+		      || !NILP (Vauto_resize_tool_bars))
+		  && redisplay_tool_bar (f))
+		ignore_mouse_drag_p = 1;
+	    }
 #endif
         }
 #endif
@@ -20209,6 +20244,10 @@ display_menu_bar (struct window *w)
   if (FRAME_X_P (f))
     return;
 #endif
+#ifdef HAVE_MACGUI
+  if (FRAME_MAC_P (f))
+    return;
+#endif
 
 #ifdef HAVE_NS
   if (FRAME_NS_P (f))
@@ -22648,7 +22687,7 @@ get_char_face_and_encoding (struct frame *f, int c, int face_id,
     }
 
   /* Make sure X resources of the face are allocated.  */
-#ifdef HAVE_X_WINDOWS
+#if defined (HAVE_X_WINDOWS) || defined (HAVE_MACGUI)
   if (display_p)
 #endif
     {
@@ -26512,7 +26551,10 @@ cursor_in_mouse_face_p (struct window *w)
    covers these buffer positions.  This is similar to
    row_containing_pos, but is more accurate when bidi reordering makes
    buffer positions change non-linearly with glyph rows.  */
-static void
+#ifndef HAVE_MACGUI
+static
+#endif
+void
 rows_from_pos_range (struct window *w,
 		     ptrdiff_t start_charpos, ptrdiff_t end_charpos,
 		     Lisp_Object disp_string,
@@ -27708,7 +27750,7 @@ note_mouse_highlight (struct frame *f, int x, int y)
   struct buffer *b;
 
   /* When a menu is active, don't highlight because this looks odd.  */
-#if defined (USE_X_TOOLKIT) || defined (USE_GTK) || defined (HAVE_NS) || defined (MSDOS)
+#if defined (USE_X_TOOLKIT) || defined (USE_GTK) || defined (HAVE_MACGUI) || defined (HAVE_NS) || defined (MSDOS)
   if (popup_activated ())
     return;
 #endif

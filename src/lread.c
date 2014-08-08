@@ -66,8 +66,12 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #endif
 
 /* Hash table read constants.  */
-static Lisp_Object Qhash_table, Qdata;
-static Lisp_Object Qtest, Qsize;
+static Lisp_Object Qhash_table;
+#ifndef HAVE_MACGUI
+static
+#endif
+Lisp_Object Qdata, Qsize;
+static Lisp_Object Qtest;
 static Lisp_Object Qweakness;
 static Lisp_Object Qrehash_size;
 static Lisp_Object Qrehash_threshold;
@@ -4191,8 +4195,12 @@ init_lread (void)
         }
       else
 	{
-#ifdef HAVE_NS
+#if defined (HAVE_MACGUI) || defined (HAVE_NS)
+#ifdef HAVE_MACGUI
+	  const char *loadpath = mac_load_path;
+#else
 	  const char *loadpath = ns_load_path ();
+#endif
 	  Vload_path = decode_env_path (0, loadpath ? loadpath : normal);
 #else
 	  Vload_path = decode_env_path (0, normal);
