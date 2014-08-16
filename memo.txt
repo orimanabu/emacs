@@ -1,23 +1,31 @@
-# git branch
-git checkout emacs-24.3
-git checkout -b orimanabu/emacs-24.3/mac-4.8
+#!/bin/sh
 
-# prepare for auto-generated fiiles
-tar xvf ~/Downloads/emacs-24.3.tar.xz
-(cd emacs-24.3/ && tar cf - .) | tar xpvf -
-rm -rf emacs-24.3/
+#appdir=$(pwd)/build/Emacs.app
+#appbindir=${appdir}/Contents/MacOS
+#appresdir=${appdir}/Contents/Resources
+prefix=$(pwd)/build
+appdir=${prefix}/Emacs.app
+bindir=${appdir}/Contents/MacOS
+resdir=${appdir}/Contents/Resources
 
-# patch
-patch -p0 < ~/Downloads/emacs-24.3-mac-4.8/patch-mac 2>&1 | tee log.patch
+#CC=/usr/bin/gcc ./configure --with-mac --enable-mac-app --without-x \
+CC=/usr/bin/gcc ./configure --with-mac --without-x --enable-mac-app=${prefix} --prefix=${prefix} \
+--exec-prefix=${bindir} \
+--bindir=${bindir}/bin \
+--libexecdir=${bindir}/libexec \
+--datarootdir=${resir}/share \
+--datadir=${resdir}/share \
+--docdir=${resdir}/etc \
+--sysconfdir=${resdir}/etc \
+--infodir=${resdir}/info \
+--mandir=${resdir}/man \
+--without-gnutls \
+2>&1 | tee log.configure
+#--prefix=${resdir}
+#--archlibdir=${bindir}/libexec \
+#lispdir=${resdir}/lisp
+#leimdir=${resdir}/leim
 
-# git
-git add doc/emacs/macport.texi
-git status | grep modified: | awk '{print $3}' | xargs git add
-git commit -m 'apply patch-mac from emacs-24.3-mac-4.8.'
-
-
-cp -rp ~/Downloads/emacs-24.3-mac-4.8/mac .
-cp -p ./nextstep/Cocoa/Emacs.base/Contents/Resources/Emacs.icns ./mac/Emacs.app/Contents/Resources/Emacs.icns
-cp -rp ~/Downloads/emacs-24.3-mac-4.8/etc/images/* ./etc/images/
-cp -p ~/Downloads/emacs-24.3-mac-4.8/src/* ./src/
-cp -p ~/Downloads/emacs-24.3-mac-4.8/lisp/term/mac-win.el ./lisp/term/
+make bootstrap 2>&1 | tee log.bootstrap
+#make bootstrap 2>&1 | tee log.bootstrap
+#make install 2>&1 | tee log.install
