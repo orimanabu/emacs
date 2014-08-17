@@ -107,7 +107,6 @@ static ptrdiff_t image_cache_refcount;
 
    ========================================================================== */
 
-
 void
 check_ns (void)
 {
@@ -2702,6 +2701,24 @@ be used as the image of the icon representing the frame.  */);
                doc: /* Toolkit version for NS Windowing.  */);
   Vns_version_string = ns_appkit_version_str ();
 
+
+  DEFVAR_LISP ("ns-shift-key-mask", Vns_shift_key_mask,
+               doc: /* Shift key mask defined in system. */);
+  Vns_shift_key_mask = make_number (NSShiftKeyMask);
+
+  DEFVAR_LISP ("ns-control-key-mask", Vns_control_key_mask,
+               doc: /* Control key mask defined in system. */);
+  Vns_control_key_mask = make_number (NSControlKeyMask);
+
+  DEFVAR_LISP ("ns-alternate-key-mask", Vns_alternate_key_mask,
+               doc: /* Alternate key mask defined in system. */);
+  Vns_alternate_key_mask = make_number (NSAlternateKeyMask);
+
+  DEFVAR_LISP ("ns-command-key-mask", Vns_command_key_mask,
+               doc: /* Command key mask defined in system. */);
+  Vns_command_key_mask = make_number (NSCommandKeyMask);
+
+
   defsubr (&Sns_read_file_name);
   defsubr (&Sns_get_resource);
   defsubr (&Sns_set_resource);
@@ -2745,6 +2762,10 @@ be used as the image of the icon representing the frame.  */);
 
   defsubr (&Sx_show_tip);
   defsubr (&Sx_hide_tip);
+
+#ifdef NS_IMPL_COCOA
+  mac_init_input_method ();
+#endif
 
   /* used only in fontset.c */
   check_window_system_func = check_ns;

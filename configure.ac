@@ -1571,7 +1571,7 @@ if test "${HAVE_NS}" = yes; then
      leimdir="\${ns_appresdir}/leim"
      INSTALL_ARCH_INDEP_EXTRA=
   fi
-  NS_OBJC_OBJ="nsterm.o nsfns.o nsmenu.o nsselect.o nsimage.o nsfont.o"
+  NS_OBJC_OBJ="nsterm.o nsfns.o nsmenu.o nsselect.o nsimage.o nsfont.o macim.o"
 fi
 CFLAGS="$tmp_CFLAGS"
 CPPFLAGS="$tmp_CPPFLAGS"
@@ -4322,7 +4322,7 @@ case "$opsys" in
    ## 0x690 is the total size of 30 segment load commands (at 56
    ## each); under Cocoa 31 commands are required.
    if test "$HAVE_NS" = "yes"; then
-     libs_nsgui="-framework AppKit"
+     libs_nsgui="-framework AppKit -framework Carbon -framework Cocoa"
      headerpad_extra=6C8
    else
      libs_nsgui=

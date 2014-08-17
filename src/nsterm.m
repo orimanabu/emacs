@@ -4049,6 +4049,9 @@ ns_term_init (Lisp_Object display_name)
   /*   [[NSNotificationCenter defaultCenter] addObserver: NSApp
                                          selector: @selector (logNotification:)
                                              name: nil object: nil]; */
+  [[NSDistributedNotificationCenter defaultCenter] addObserver: NSApp
+					selector: @selector (changeInputMethod:)
+						   name: @"AppleSelectedInputSourcesChangedNotification" object: nil];
 
   dpyinfo = xzalloc (sizeof *dpyinfo);
 
@@ -4278,6 +4281,21 @@ ns_term_shutdown (int sig)
     NSLog (@"notification: '%@'", [notification name]);
 }
 
+- (void)changeInputMethod: (NSNotification *)notification
+{
+
+  struct frame *emacsframe = SELECTED_FRAME ();
+
+  if (mac_store_change_input_method_event())
+    {
+      if (!emacs_event)
+	return;
+      emacs_event->kind = NS_NONKEY_EVENT;
+      emacs_event->code = KEY_MAC_CHANGE_INPUT_METHOD;
+      emacs_event->modifiers = 0;
+      EV_TRAILER ((id)nil);
+    }
+}
 
 - (void)sendEvent: (NSEvent *)theEvent
 /* --------------------------------------------------------------------------
@@ -4957,7 +4975,8 @@ not_in_argv (NSString *arg)
              code, fnKeysym, flags, emacs_event->modifiers);
 
       /* if it was a function key or had modifiers, pass it directly to emacs */
-      if (fnKeysym || (emacs_event->modifiers
+      if (mac_pass_key_directly_to_emacs ()
+	  ||fnKeysym || (emacs_event->modifiers
                        && (emacs_event->modifiers != shift_modifier)
                        && [[theEvent charactersIgnoringModifiers] length] > 0))
 /*[[theEvent characters] length] */
@@ -4972,8 +4991,18 @@ not_in_argv (NSString *arg)
               ? MULTIBYTE_CHAR_KEYSTROKE_EVENT : ASCII_KEYSTROKE_EVENT;
 
           emacs_event->code = code;
-          EV_TRAILER (theEvent);
-          return;
+	  /* The function mac_pass_key_to_system decides 
+	     whether it is passed directly to emacs or not. */
+	  if (emacs_event->kind == NON_ASCII_KEYSTROKE_EVENT
+	      || !mac_pass_key_to_system (code, flags
+					  & (NSShiftKeyMask
+					     | NSControlKeyMask
+					     | NSAlternateKeyMask
+					     | NSCommandKeyMask)))
+	    {
+	      EV_TRAILER (theEvent);
+	      return;
+	    }
         }
     }
 
@@ -5067,10 +5096,19 @@ not_in_argv (NSString *arg)
     NSLog (@"setMarkedText '%@' len =%d range %d from %d", str, [str length],
            selRange.length, selRange.location);
 
-  if (workingText != nil)
-    [self deleteWorkingText];
   if ([str length] == 0)
-    return;
+    {
+      [self deleteWorkingText];
+      return;
+    }
+  else
+    {
+      if (workingText != nil) {
+	[workingText release];
+	workingText = nil;
+	processingCompose = NO;
+      }
+    }
 
   if (!emacs_event)
     return;
@@ -5080,7 +5118,9 @@ not_in_argv (NSString *arg)
   ns_working_text = build_string ([workingText UTF8String]);
 
   emacs_event->kind = NS_TEXT_EVENT;
-  emacs_event->code = KEY_NS_PUT_WORKING_TEXT;
+  emacs_event->code = KEY_NS_PUT_MARKED_TEXT;
+  emacs_event->arg = Fcons (make_number (selRange.location),
+			    Fcons (make_number (selRange.length), Qnil));
   EV_TRAILER ((id)nil);
 }
 
@@ -5135,15 +5175,23 @@ not_in_argv (NSString *arg)
 {
   NSRect rect;
   NSPoint pt;
-  struct window *win = XWINDOW (FRAME_SELECTED_WINDOW (emacsframe));
+  //  struct window *win = XWINDOW (FRAME_SELECTED_WINDOW (emacsframe));
+  struct window *win;
   if (NS_KEYLOG)
     NSLog (@"firstRectForCharRange request");
+    
+  if (NILP (Vmac_in_echo_area))
+    win = XWINDOW (FRAME_SELECTED_WINDOW (emacsframe));
+    else if (WINDOWP (echo_area_window))
+    win = XWINDOW (echo_area_window);
+  else
+    win = XWINDOW (FRAME_SELECTED_WINDOW (emacsframe));
 
   rect.size.width = theRange.length * FRAME_COLUMN_WIDTH (emacsframe);
   rect.size.height = FRAME_LINE_HEIGHT (emacsframe);
   pt.x = WINDOW_TEXT_TO_FRAME_PIXEL_X (win, win->phys_cursor.x);
   pt.y = WINDOW_TO_FRAME_PIXEL_Y (win, win->phys_cursor.y
-                                       +FRAME_LINE_HEIGHT (emacsframe));
+                                       +FRAME_LINE_HEIGHT (emacsframe)+2);
 
   pt = [self convertPoint: pt toView: nil];
   pt = [[self window] convertBaseToScreen: pt];
@@ -7172,6 +7220,10 @@ A value of nil means to draw the underline according to the value of the
 variable `x-use-underline-position-properties', which is usually at the
 baseline level.  The default value is nil.  */);
   x_underline_at_descent_line = 0;
+
+  DEFVAR_LISP ("mac-in-echo-area", Vmac_in_echo_area,
+               doc: /* state of cursor in echo area. */);
+  Vmac_in_echo_area = Qnil;
 
   /* Tell emacs about this window system. */
   Fprovide (intern ("ns"), Qnil);

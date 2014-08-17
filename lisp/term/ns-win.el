@@ -171,6 +171,7 @@ The properties returned may include `top', `left', `height', and `width'."
 (define-key global-map [ns-new-frame] 'make-frame)
 (define-key global-map [ns-toggle-toolbar] 'ns-toggle-toolbar)
 (define-key global-map [ns-show-prefs] 'customize)
+(define-key global-map [mac-change-input-method] 'mac-change-input-method)
 
 
 ;; Set up a number of aliases and other layers to pretend we're using
@@ -256,13 +257,29 @@ The properties returned may include `top', `left', `height', and `width'."
 ;; editing window.)
 
 (defface ns-working-text-face
-  '((t :underline t))
+  '((((background dark)) :underline "gray80")
+    (t :underline "gray20"))
   "Face used to highlight working text during compose sequence insert."
+  :group 'ns)
+
+(defface ns-marked-text-face
+  '((((background dark)) :underline "gray80")
+    (t :underline "gray20"))
+  "Face used to highlight marked text during compose sequence insert."
+  :group 'ns)
+
+(defface ns-unmarked-text-face
+  '((((background dark)) :underline "gray20")
+    (t :underline "gray80"))
+  "Face used to highlight marked text during compose sequence insert."
   :group 'ns)
 
 (defvar ns-working-overlay nil
   "Overlay used to highlight working text during compose sequence insert.
 When text is in th echo area, this just stores the length of the working text.")
+
+(defvar ns-marked-overlay nil
+  "Overlay used to highlight marked text during compose sequence insert.")
 
 (defvar ns-working-text)		; nsterm.m
 
@@ -271,17 +288,19 @@ When text is in th echo area, this just stores the length of the working text.")
 (defun ns-in-echo-area ()
   "Whether, for purposes of inserting working composition text, the minibuffer
 is currently being used."
-  (or isearch-mode
-      (and cursor-in-echo-area (current-message))
-      ;; Overlay strings are not shown in some cases.
-      (get-char-property (point) 'invisible)
-      (and (not (bobp))
-	   (or (and (get-char-property (point) 'display)
-		    (eq (get-char-property (1- (point)) 'display)
-			(get-char-property (point) 'display)))
-	       (and (get-char-property (point) 'composition)
-		    (eq (get-char-property (1- (point)) 'composition)
-			(get-char-property (point) 'composition)))))))
+  (setq mac-in-echo-area 
+	(or isearch-mode
+	    (and cursor-in-echo-area (current-message))
+	    ;; Overlay strings are not shown in some cases.
+	    (get-char-property (point) 'invisible)
+	    (and (not (bobp))
+		 (or (and (get-char-property (point) 'display)
+			  (eq (get-char-property (1- (point)) 'display)
+			      (get-char-property (point) 'display)))
+		     (and (get-char-property (point) 'composition)
+			  (eq (get-char-property (1- (point)) 'composition)
+			      (get-char-property (point) 'composition)))))))
+  mac-in-echo-area)
 
 ;; The 'interactive' here stays for subinvocations, so the ns-in-echo-area
 ;; always returns nil for some reason.  If this WASN'T the case, we could
@@ -290,6 +309,7 @@ is currently being used."
 (defun ns-put-working-text ()
   (interactive)
   (if (ns-in-echo-area) (ns-echo-working-text) (ns-insert-working-text)))
+
 (defun ns-unput-working-text ()
   (interactive)
   (ns-delete-working-text))
@@ -311,19 +331,81 @@ The overlay is assigned the face `ns-working-text-face'."
 (defun ns-echo-working-text ()
   "Echo contents of `ns-working-text' in message display area.
 See `ns-insert-working-text'."
-  (ns-delete-working-text)
   (let* ((msg (current-message))
-	 (msglen (length msg))
-	 message-log-max)
+         (msglen (length msg))
+         message-log-max)
+    (if (integerp ns-working-overlay)
+	(progn
+	  (setq msg (substring msg 0 (- (length msg) ns-working-overlay)))
+	  (setq msglen (length msg))))
     (setq ns-working-overlay (length ns-working-text))
     (setq msg (concat msg ns-working-text))
     (put-text-property msglen (+ msglen ns-working-overlay)
-		       'face 'ns-working-text-face msg)
+			'face 'ns-working-text-face msg)
+     (message "%s" msg)))
+
+(defun ns-put-marked-text (event)
+  (interactive "e")
+
+  (let ((pos (nth 1 event))
+	(len (nth 2 event)))
+    (if (ns-in-echo-area)
+	(ns-echo-marked-text pos len)
+      (ns-insert-marked-text pos len))))
+
+(defun ns-insert-marked-text (pos len)
+  "Insert contents of `ns-working-text' as UTF-8 string and mark with
+`ns-working-overlay' and `ns-marked-overlay'.  Any previously existing
+working text is cleared first. The overlay is assigned the faces 
+`ns-working-text-face' and `ns-marked-text-face'."
+  (ns-delete-working-text)
+  (let ((start (point)))
+    (if (<= pos (length ns-working-text))
+      (progn
+	(put-text-property pos len 'face 'ns-working-text-face ns-working-text)
+	(insert ns-working-text)
+	(if (= len 0)
+	    (overlay-put (setq ns-working-overlay
+			       (make-overlay start (point) (current-buffer) nil t))
+			 'face 'ns-working-text-face)
+	  (overlay-put (setq ns-working-overlay
+			     (make-overlay start (point) (current-buffer) nil t))
+		       'face 'ns-unmarked-text-face)
+	  (overlay-put (setq ns-marked-overlay 
+			     (make-overlay (+ start pos) (+ start pos len)
+					   (current-buffer) nil t))
+		       'face 'ns-marked-text-face))
+	(goto-char (+ start pos))))))
+    
+(defun ns-echo-marked-text (pos len)
+  "Echo contents of `ns-working-text' in message display area.
+See `ns-insert-working-text'."
+  (let* ((msg (current-message))
+         (msglen (length msg))
+         message-log-max)
+    (when (integerp ns-working-overlay)
+      (setq msg (substring msg 0 (- (length msg) ns-working-overlay)))
+      (setq msglen (length msg)))
+    (setq ns-working-overlay (length ns-working-text))
+    (setq msg (concat msg ns-working-text))
+    (if (= len 0)
+        (put-text-property msglen (+ msglen ns-working-overlay)
+                           'face 'ns-working-text-face msg)
+      (put-text-property msglen (+ msglen ns-working-overlay)
+                         'face 'ns-unmarked-text-face msg)
+      (put-text-property (+ msglen pos) (+ msglen pos len)
+                         'face 'ns-marked-text-face msg))
     (message "%s" msg)))
 
 (defun ns-delete-working-text()
-  "Delete working text and clear `ns-working-overlay'."
+  "Delete working text and clear `ns-working-overlay' and `ns-marked-overlay'."
   (interactive)
+  (when (and (overlayp ns-marked-overlay)
+	     ;; Still alive
+	     (overlay-buffer ns-marked-overlay))
+    (with-current-buffer (overlay-buffer ns-marked-overlay)
+      (delete-overlay ns-marked-overlay)))
+  (setq ns-marked-overlay nil)
   (cond
    ((and (overlayp ns-working-overlay)
          ;; Still alive?
@@ -942,6 +1024,466 @@ See the documentation of `create-fontset-from-fontset-spec' for the format.")
 (add-to-list 'frame-creation-function-alist '(ns . x-create-frame-with-faces))
 (add-to-list 'window-system-initialization-alist '(ns . ns-initialize-window-system))
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Implementation of Input Method Extension for MacOS X
+;; written by Taiichi Hashimoto <taiichi2@mac.com>
+;;
+
+(defvar mac-input-method-parameters
+  '(
+    ("com.apple.inputmethod.Kotoeri.Roman"
+     (title . "A")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.Kotoeri.Japanese"
+     (title . "あ")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.Kotoeri.Japanese.Katakana"
+     (title . "ア")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.Kotoeri.Japanese.FullWidthRoman"
+     (title . "Ａ")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.Kotoeri.Japanese.HalfWidthKana"
+     (title . "ｱ")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.kotoeri.Ainu"
+     (title . "アイヌ")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.Korean.2SetKorean"
+     (title . "가2")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.Korean.3SetKorean"
+     (title . "가3")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.Korean.390Sebulshik"
+     (title . "가5")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.Korean.GongjinCheongRomaja"
+     (title . "가G")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.Korean.HNCRomaja"
+     (title . "가H")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.Tamil.AnjalIM"
+     (title . "Anjal")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.Tamil.Tamil99"
+     (title . "Tamil")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.VietnameseIM.VietnameseSimpleTelex"
+     (title . "ST")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.VietnameseIM.VietnameseTelex"
+     (title . "TX")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.VietnameseIM.VietnameseVNI"
+     (title . "VN")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.VietnameseIM.VietnameseVIQR"
+     (title . "VQ")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.SCIM.ITABC"
+     (title . "拼")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.SCIM.WBX"
+     (title . "型")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.SCIM.WBH"
+     (title . "画")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.TCIM.Zhuyin"
+     (title . "注")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.TCIM.Pinyin"
+     (title . "拼")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.TCIM.Cangjie"
+     (title . "倉")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.TCIM.Jianyi"
+     (title . "速")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.TCIM.Dayi"
+     (title . "易")
+     (cursor-color)
+     (cursor-type))
+    ("com.apple.inputmethod.TCIM.Hanin"
+     (title . "漢")
+     (cursor-color)
+     (cursor-type))
+    ("com.google.inputmethod.Japanese.Roman"
+     (title . "G")
+     (cursor-color)
+     (cursor-type))
+    ("com.google.inputmethod.Japanese.base"
+     (title . "ぐ")
+     (cursor-color)
+     (cursor-type))
+    ("com.google.inputmethod.Japanese.Katakana"
+     (title . "グ")
+     (cursor-color)
+     (cursor-type))
+    ("com.google.inputmethod.Japanese.FullWidthRoman"
+     (title . "Ｇ")
+     (cursor-color)
+     (cursor-type))
+    ("com.google.inputmethod.Japanese.HalfWidthKana"
+     (title . "ｸﾞ")
+     (cursor-color)
+     (cursor-type))
+    ("jp.monokakido.inputmethod.Kawasemi.Roman"
+     (title . "K")
+     (cursor-color)
+     (cursor-type))
+    ("jp.monokakido.inputmethod.Kawasemi.Japanese"
+     (title . "か")
+     (cursor-color)
+     (cursor-type))
+    ("jp.monokakido.inputmethod.Kawasemi.Japanese.Katakana"
+     (title . "カ")
+     (cursor-color)
+     (cursor-type))
+    ("jp.monokakido.inputmethod.Kawasemi.Japanese.FullWidthRoman"
+     (title . "Ｋ")
+     (cursor-color)
+     (cursor-type))
+    ("jp.monokakido.inputmethod.Kawasemi.Japanese.HalfWidthKana"
+     (title . "ｶ")
+     (cursor-color)
+     (cursor-type))
+    ("jp.monokakido.inputmethod.Kawasemi.Japanese.HalfWidthRoman"
+     (title . "_K")
+     (cursor-color)
+     (cursor-type))
+    ("jp.monokakido.inputmethod.Kawasemi.Japanese.Code"
+     (title . "C")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok21.Roman"
+     (title . "A")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok21.Japanese"
+     (title . "あ")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok21.Japanese.Katakana"
+     (title . "ア")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok21.Japanese.FullWidthRoman"
+     (title . "英")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok21.Japanese.HalfWidthEiji"
+     (title . "半英")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok22.Roman"
+     (title . "A")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok22.Japanese"
+     (title . "あ")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok22.Japanese.Katakana"
+     (title . "ア")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok22.Japanese.FullWidthRoman"
+     (title . "英")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok22.Japanese.HalfWidthEiji"
+     (title . "半英")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok23.Roman"
+     (title . "A")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok23.Japanese"
+     (title . "あ")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok23.Japanese.Katakana"
+     (title . "ア")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok23.Japanese.FullWidthRoman"
+     (title . "英")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok23.Japanese.HalfWidthEiji"
+     (title . "半英")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok24.Roman"
+     (title . "A")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok24.Japanese"
+     (title . "あ")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok24.Japanese.Katakana"
+     (title . "ア")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok24.Japanese.FullWidthRoman"
+     (title . "英")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok24.Japanese.HalfWidthEiji"
+     (title . "半英")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok25.Roman"
+     (title . "A")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok25.Japanese"
+     (title . "あ")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok25.Japanese.Katakana"
+     (title . "ア")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok25.Japanese.FullWidthRoman"
+     (title . "英")
+     (cursor-color)
+     (cursor-type))
+    ("com.justsystems.inputmethod.atok25.Japanese.HalfWidthEiji"
+     (title . "半英")
+     (cursor-color)
+     (cursor-type))
+    )
+  "Alist of Mac script code vs parameters for input method on MacOSX.")
+
+
+(defun mac-get-input-method-parameter (is key)
+  "Function to get a parameter of a input method."
+  (interactive)
+  (assq key (cdr (assoc is mac-input-method-parameters))))
+
+(defun mac-get-input-method-title (&optional input-source)
+  "Return input method title of input source.
+   If input-source is nil, return one of current frame."
+  (if input-source
+      (cdr (mac-get-input-method-parameter input-source 'title))
+    current-input-method-title))
+
+(defun mac-get-cursor-type (&optional input-source)
+  "Return cursor type of input source.
+   If input-source is nil, return one of current frame."
+  (if input-source
+      (or (cdr (mac-get-input-method-parameter input-source 'cursor-type))
+	  (cdr (assq 'cursor-type default-frame-alist))
+	  cursor-type)
+    (cdr (assq 'cursor-type (frame-parameters (selected-frame))))))
+
+(defun mac-get-cursor-color (&optional input-source)
+  "Return cursor color of input source.
+   If input-source is nil, return one of current frame."
+  (if input-source
+      (or (cdr (mac-get-input-method-parameter input-source 'cursor-color))
+	  (cdr (assq 'cursor-color default-frame-alist)))
+    (cdr (assq 'cursor-color (frame-parameters (selected-frame))))))
+
+
+(defun mac-set-input-method-parameter (is key value)
+  "Function to set a parameter of a input method."
+  (let* ((is-param (assoc is mac-input-method-parameters))
+         (param (assq key is-param)))
+    (if is-param
+	(if param
+	    (setcdr param value)
+	  (setcdr is-param (cons (cons key value) (cdr is-param))))
+      (setq mac-input-method-parameters
+	    (cons (list is (cons key value))
+		  mac-input-method-parameters)))))
+
+
+(defun mac-input-method-update (is)
+  "Funtion to update parameters of a input method."
+  (interactive)
+
+  (let ((title (mac-get-input-method-title is))
+        (type (mac-get-cursor-type is))
+        (color (mac-get-cursor-color is)))
+    (if (and title (not (equal title (mac-get-input-method-title))))
+	(setq current-input-method-title title))
+    (if (and type (not (equal type (mac-get-cursor-type))))
+	(setq cursor-type type))
+    (if (and color (not (equal color (mac-get-cursor-color))))
+	(set-cursor-color color))
+    (force-mode-line-update)
+    (if isearch-mode (isearch-update))))
+
+
+(defun mac-toggle-input-method (&optional arg)
+  "Function to toggle input method on MacOSX."
+  (interactive)
+  
+  (if arg
+      (progn
+	(make-local-variable 'input-method-function)
+	(setq inactivate-current-input-method-function 'mac-toggle-input-method)
+	(setq input-method-function nil)
+	(setq describe-current-input-method-function nil)
+	(mac-toggle-input-source t))
+    (kill-local-variable 'input-method-function)
+    (setq describe-current-input-method-function nil)
+    (mac-toggle-input-source nil)))
+
+
+(defun mac-change-language-to-us ()
+  "Function to change language to us."
+  (interactive)
+  (mac-toggle-input-method nil))
+
+
+(defun mac-handle-input-method-change ()
+  "Function run when a input method change."
+  (interactive)
+
+  (if (equal default-input-method "MacOSX")
+      (let ((input-source (mac-get-current-input-source))
+	  (ascii-capable (mac-input-source-is-ascii-capable)))
+	
+	(cond ((and (not current-input-method) (not ascii-capable))
+	       (set-input-method "MacOSX"))
+	      ((and (equal current-input-method "MacOSX") ascii-capable)
+	       (toggle-input-method nil)))
+	(mac-input-method-update input-source))))
+
+;;
+;; Emacs input method for input method on MacOSX.
+;;
+(register-input-method "MacOSX" "MacOSX" 'mac-toggle-input-method
+		       "Mac" "Input Method on MacOSX System")
+
+
+;;
+;; Minor mode of using input methods on MacOS X
+;;
+(define-minor-mode mac-input-method-mode
+  "Use input methods on MacOSX."
+  :init-value nil
+  :group 'ns
+  :global t
+
+  (if mac-input-method-mode
+      (progn
+	(setq default-input-method "MacOSX")
+	(add-hook 'minibuffer-setup-hook 'mac-change-language-to-us)
+	(mac-translate-from-yen-to-backslash))
+    (setq default-input-method nil)))
+
+;;
+;; Valiable and functions to pass key(shortcut) to system.
+;;
+(defvar mac-keys-passed-to-system nil
+  "A list of keys passed to system on MacOSX.")
+
+(defun mac-add-key-passed-to-system (key)
+  (let ((shift   '(shift shft))
+	(control '(control ctrl ctl))
+	(option  '(option opt alternate alt))
+	(command '(command cmd)))
+
+    (add-to-list 'mac-keys-passed-to-system
+		 (cond ((symbolp key)
+			(cond ((memq key shift)
+			       (cons ns-shift-key-mask nil))
+			      ((memq key control)
+			       (cons ns-control-key-mask nil))
+			      ((memq key option)
+			       (cons ns-alternate-key-mask nil))
+			      ((memq key command)
+			       (cons ns-command-key-mask nil))
+			      (t (cons nil nil))))
+		       ((numberp key) (cons 0 key))
+		       ((listp key)
+			(let ((l key) (k nil) (m 0))
+			  (while l
+			    (cond ((memq (car l) shift)
+				   (setq m (logior m ns-shift-key-mask)))
+				  ((memq (car l) control)
+				   (setq m (logior m ns-control-key-mask)))
+				  ((memq (car l) option)
+				   (setq m (logior m ns-alternate-key-mask)))
+				  ((memq (car l) command)
+				       (setq m (logior m ns-command-key-mask)))
+				  ((numberp (car l))
+				   (if (not k) (setq k (car l)))))
+			    (setq l (cdr l)))
+			  (cons m k)))
+		       (t (cons nil nil))))))
+
+
+;;
+;; Entry Emacs event for inline input method on MacOSX.
+;;
+(define-key special-event-map
+  [mac-change-input-method] 'mac-handle-input-method-change)
+      
+;;
+;; Convert yen to backslash for JIS keyboard.
+;;
+(defun mac-translate-from-yen-to-backslash () 
+  ;; Convert yen to backslash for JIS keyboard.
+  (interactive)
+
+  (define-key global-map [165] nil)
+  (define-key global-map [2213] nil)
+  (define-key global-map [3420] nil)
+  (define-key global-map [67109029] nil)
+  (define-key global-map [67111077] nil)
+  (define-key global-map [8388773] nil)
+  (define-key global-map [134219941] nil)
+  (define-key global-map [75497596] nil)
+  (define-key global-map [201328805] nil)
+  (define-key function-key-map [165] [?\\])
+  (define-key function-key-map [2213] [?\\]) ;; for Intel
+  (define-key function-key-map [3420] [?\\]) ;; for PowerPC
+  (define-key function-key-map [67109029] [?\C-\\])
+  (define-key function-key-map [67111077] [?\C-\\])
+  (define-key function-key-map [8388773] [?\M-\\])
+  (define-key function-key-map [134219941] [?\M-\\])
+  (define-key function-key-map [75497596] [?\C-\M-\\])
+  (define-key function-key-map [201328805] [?\C-\M-\\])
+)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (provide 'ns-win)
 

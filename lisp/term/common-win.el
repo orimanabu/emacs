@@ -127,6 +127,7 @@ is not used)."
 	       (cons (logior (lsh 0 16)  12) 'ns-new-frame)
 	       (cons (logior (lsh 0 16)  13) 'ns-toggle-toolbar)
 	       (cons (logior (lsh 0 16)  14) 'ns-show-prefs)
+	       (cons (logior (lsh 0 16)  15) 'mac-change-input-method)
 	       ))))
     (set-terminal-parameter frame 'x-setup-function-keys t)))
 

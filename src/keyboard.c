@@ -3862,8 +3862,10 @@ kbd_buffer_get_event (KBOARD **kbp,
         {
           if (event->code == KEY_NS_PUT_WORKING_TEXT)
             obj = Fcons (intern ("ns-put-working-text"), Qnil);
-          else
+          else if (event->code == KEY_NS_UNPUT_WORKING_TEXT)
             obj = Fcons (intern ("ns-unput-working-text"), Qnil);
+	  else if (event->code == KEY_NS_PUT_MARKED_TEXT)
+	    obj = Fcons (intern ("ns-put-marked-text"), event->arg);
 	  kbd_fetch_ptr = event + 1;
           if (used_mouse_menu)
             *used_mouse_menu = 1;
@@ -12088,6 +12090,8 @@ keys_of_keyboard (void)
 			    "ns-put-working-text");
   initial_define_lispy_key (Vspecial_event_map, "ns-unput-working-text",
 			    "ns-unput-working-text");
+  initial_define_lispy_key (Vspecial_event_map, "ns-put-marked-text",
+			    "ns-put-marked-text");
   /* Here we used to use `ignore-event' which would simple set prefix-arg to
      current-prefix-arg, as is done in `handle-switch-frame'.
      But `handle-switch-frame is not run from the special-map.
